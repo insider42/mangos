@@ -9236,7 +9236,7 @@ uint32 Unit::SpellDamageBonus(Unit *pVictim, SpellEntry const *spellProto, uint3
             }
             break;
         }
-        case SPELLFAMILY_DRUID
+        case SPELLFAMILY_DRUID:
         {
             //Improved Insect Swarm [Wrath dmg]
             if (spellProto->SpellFamilyFlags & UI64LIT(0x0001) && spellProto->SpellIconID == 263)

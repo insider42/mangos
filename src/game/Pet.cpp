@@ -491,6 +491,14 @@ void Pet::Update(uint32 diff)
     if(m_removed)                                           // pet already removed, just wait in remove queue, no updates
         return;
 
+    Unit* owner = GetOwner();
+    if(owner && owner->IsPvP())
+        SetPvP(true);
+    // remove arena FFA flag.
+    AreaTableEntry const* area = GetAreaEntryByAreaID(GetAreaId());
+    if(area && !(area->flags & AREA_FLAG_ARENA) && HasByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP))
+        RemoveByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_FFA_PVP);
+
     switch( m_deathState )
     {
         case CORPSE:

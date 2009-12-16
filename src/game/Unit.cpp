@@ -7543,6 +7543,12 @@ bool Unit::HandleProcTriggerSpell(Unit *pVictim, uint32 damage, Aura* triggeredB
                 trigger_spell_id = 54843;
                 target = pVictim;
             }
+            // Blessing of Ancient Kings
+            else if (auraSpellInfo->Id == 64411)
+            {
+                basepoints[0] = damage * 15 / 100;
+                trigger_spell_id = 64413;
+            }
             break;
         }
         case SPELLFAMILY_SHAMAN:

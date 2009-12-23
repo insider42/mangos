@@ -4511,7 +4511,7 @@ void Aura::HandleModMechanicImmunity(bool apply, bool /*Real*/)
         if (apply)
         {
             GameObject* obj = m_target->GetGameObject(48018);
-            if (obj)
+            if (obj && m_target->GetDistance(obj) <= 40.0f)
                 ((Player*)m_target)->TeleportTo(obj->GetMapId(),obj->GetPositionX(),obj->GetPositionY(),obj->GetPositionZ(),obj->GetOrientation());
         }
     }

@@ -149,7 +149,7 @@ void Bag::StoreItem( uint8 slot, Item *pItem, bool /*update*/ )
 {
     assert(slot < MAX_BAG_SIZE);
 
-    if( pItem )
+    if( pItem && pItem->GetGUID() != this->GetGUID())
     {
         m_bagslot[slot] = pItem;
         SetUInt64Value(CONTAINER_FIELD_SLOT_1 + (slot * 2), pItem->GetGUID());

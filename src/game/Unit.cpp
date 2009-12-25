@@ -6056,6 +6056,8 @@ bool Unit::HandleDummyAuraProc(Unit *pVictim, uint32 damage, Aura* triggeredByAu
                 // Wrath crit
                 if (procSpell->SpellFamilyFlags & UI64LIT(0x0000000000000001))
                 {
+                    if (this->HasAura(48517))
+                        return false;
                     if (!roll_chance_i(60))
                         return false;
                     triggered_spell_id = 48518;
@@ -6065,6 +6067,8 @@ bool Unit::HandleDummyAuraProc(Unit *pVictim, uint32 damage, Aura* triggeredByAu
                 // Starfire crit
                 if (procSpell->SpellFamilyFlags & UI64LIT(0x0000000000000004))
                 {
+                    if (this->HasAura(48518))
+                        return false;
                     triggered_spell_id = 48517;
                     target = this;
                     break;

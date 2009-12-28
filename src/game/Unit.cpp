@@ -10526,11 +10526,9 @@ void Unit::Mount(uint32 mount)
 
     SetFlag( UNIT_FIELD_FLAGS, UNIT_FLAG_MOUNT );
 
-    Pet* pet = GetPet();
-    if(GetTypeId() == TYPEID_PLAYER && (!((Player*)this)->InArena())) // unsummon pet if player is not in arena
-       ((Player*)this)->UnsummonPetTemporaryIfAny();
-    else if (pet)
-        pet->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_STUNNED); // In arena, pet is not unsummon and spell bar is disabled (but shown) while palyer is mounted
+    // unsummon pet
+    if(GetTypeId() == TYPEID_PLAYER)
+        ((Player*)this)->UnsummonPetTemporaryIfAny();
 }
 
 void Unit::Unmount()

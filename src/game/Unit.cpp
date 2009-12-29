@@ -10527,13 +10527,13 @@ void Unit::Mount(uint32 mount, uint32 spellId)
             // Flying case (Unsummon any pet)
             if (IsSpellHaveAura(spellInfo, SPELL_AURA_MOD_INCREASE_FLIGHT_SPEED))
                 ((Player*)this)->UnsummonPetTemporaryIfAny();
-            // Normal case
-            else
+            // Normal case (Unsummon only permanent pet)
+            else if (Pet* pet = GetPet())
             {
-                if (Pet* pet = GetPet())
-                    pet->ApplyModeFlags(PET_MODE_DISABLE_ACTIONS,true);
-                else
+                if (pet->IsPermanentPetFor((Player*)this))
                     ((Player*)this)->UnsummonPetTemporaryIfAny();
+                else
+                    pet->ApplyModeFlags(PET_MODE_DISABLE_ACTIONS,true);
             }
         }
     }

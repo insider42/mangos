@@ -20934,15 +20934,9 @@ void Player::UpdateFallInformationIfNeed( MovementInfo const& minfo,uint16 opcod
 void Player::UnsummonPetTemporaryIfAny()
 {
     Pet* pet = GetPet();
-    if(!pet || pet->getDeathState()==CORPSE)  // if pet doesn't exist or has corpse (prevent get dead pet back while mounted, teleported etc)
+    if(!pet)
         return;
 
-    if (((Player*)this)->InArena())
-    {
-        RemovePet(pet, PET_SAVE_NOT_IN_SLOT); // remove pet while is player teleported to arena
-        return;
-    }
- 
     if(!m_temporaryUnsummonedPetNumber && pet->isControlled() && !pet->isTemporarySummoned() )
     {
         m_temporaryUnsummonedPetNumber = pet->GetCharmInfo()->GetPetNumber();

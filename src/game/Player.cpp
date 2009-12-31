@@ -16923,7 +16923,14 @@ void Player::RemovePet(Pet* pet, PetSaveMode mode, bool returnreagent)
     if(!pet)
         pet = GetPet();
 
-    if(returnreagent && (pet || m_temporaryUnsummonedPetNumber))
+    if(!pet || pet->GetOwnerGUID()!=GetGUID())
+        return;
+
+    // not save secondary permanent pet as current
+    if (pet && m_temporaryUnsummonedPetNumber != pet->GetCharmInfo()->GetPetNumber() && mode == PET_SAVE_AS_CURRENT)
+        mode = PET_SAVE_NOT_IN_SLOT;
+
+    if(returnreagent && pet && mode != PET_SAVE_AS_CURRENT)
     {
         //returning of reagents only for players, so best done here
         uint32 spellId = pet ? pet->GetUInt32Value(UNIT_CREATED_BY_SPELL) : m_oldpetspell;
@@ -16946,11 +16953,7 @@ void Player::RemovePet(Pet* pet, PetSaveMode mode, bool returnreagent)
                 }
             }
         }
-        m_temporaryUnsummonedPetNumber = 0;
     }
-
-    if(!pet || pet->GetOwnerGUID()!=GetGUID())
-        return;
 
     // only if current pet in slot
     switch(pet->getPetType())

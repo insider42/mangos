@@ -1,5 +1,5 @@
-DELETE FROM spell_proc_event WHERE entry IN (53709,53710,53711);
-INSERT INTO spell_proc_event VALUES
+DELETE FROM `spell_proc_event` WHERE `entry` IN (53709,53710,53711);
+INSERT INTO `spell_proc_event` VALUES
 (53709,0,10,16384,0,0,0,0,0,0,0),
 (53710,0,10,16384,0,0,0,0,0,0,0),
 (53711,0,10,16384,0,0,0,0,0,0,0);

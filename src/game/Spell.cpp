@@ -2583,7 +2583,7 @@ void Spell::prepare(SpellCastTargets const* targets, Aura* triggeredByAura)
         for(Unit::AuraList::const_iterator itr = dAuras.begin(); itr != dAuras.end(); ++itr)
         {
             SpellEntry const* itr_spellProto = (*itr)->GetSpellProto();
-            if(itr_spellProto->SpellFamilyName != SPELLFAMILY_GENERIC)
+            if(itr_spellProto->InterruptFlags != 0x00000000)
             {
                 m_caster->RemoveAurasDueToSpell((*itr)->GetId());
                 break;

@@ -768,8 +768,9 @@ void Spell::EffectSchoolDMG(SpellEffectIndex effect_idx)
                 {
                     // [1 + 0.25 * SPH + 0.16 * AP]
                     float ap = m_caster->GetTotalAttackPowerValue(BASE_ATTACK);
-                    int32 holy = m_caster->SpellBaseDamageBonusDone(GetSpellSchoolMask(m_spellInfo)) +
-                                 unitTarget->SpellBaseDamageBonusTaken(GetSpellSchoolMask(m_spellInfo));
+                    int32 holy = m_caster->SpellBaseDamageBonusDone(GetSpellSchoolMask(m_spellInfo));
+                    if (holy < 0)
+                        holy = 0;
                     damage += int32(ap * 0.16f) + int32(holy * 25 / 100);
                 }
                 break;
@@ -5152,16 +5153,16 @@ void Spell::EffectWeaponDmg(SpellEffectIndex eff_idx)
             // Ghostly Strike
             else if (m_caster->GetTypeId() == TYPEID_PLAYER && m_spellInfo->Id == 14278)
             {
-                Item* weapon = ((Player*)m_caster)->GetWeaponForAttack(m_attackType,true,true);
-                if (weapon && weapon->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER)
-                    totalDamagePercentMod *= 1.45f;        // 145% to daggers
+               Item* weapon = ((Player*)m_caster)->GetWeaponForAttack(m_attackType,true,true);
+               if (weapon && weapon->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER)
+                   totalDamagePercentMod *= 1.44f; // 144% to daggers
             }
             // Hemorrhage
             else if (m_caster->GetTypeId() == TYPEID_PLAYER && (m_spellInfo->SpellFamilyFlags & UI64LIT(0x2000000)))
             {
-                Item* weapon = ((Player*)m_caster)->GetWeaponForAttack(m_attackType,true,true);
-                if (weapon && weapon->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER)
-                    totalDamagePercentMod *= 1.44f;        // 144% to daggers
+               Item* weapon = ((Player*)m_caster)->GetWeaponForAttack(m_attackType,true,true);
+               if (weapon && weapon->GetProto()->SubClass == ITEM_SUBCLASS_WEAPON_DAGGER)
+                   totalDamagePercentMod *= 1.45f; // 145% to daggers
             }
             break;
         }
@@ -7539,11 +7540,7 @@ void Spell::EffectPlayerPull(SpellEffectIndex eff_idx)
     if(!unitTarget)
         return;
 
-    float dist = unitTarget->GetDistance2d(m_caster);
-    if (damage && dist > damage)
-        dist = float(damage);
-
-    unitTarget->KnockBackFrom(m_caster,-dist,float(m_spellInfo->EffectMiscValue[eff_idx])/30);
+    unitTarget->KnockBackFrom(m_caster, -unitTarget->GetDistance2d(m_caster), float(m_spellInfo->EffectMiscValue[eff_idx])/30);
 }
 
 void Spell::EffectDispelMechanic(SpellEffectIndex eff_idx)

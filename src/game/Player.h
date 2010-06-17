@@ -1150,7 +1150,7 @@ class MANGOS_DLL_SPEC Player : public Unit
         std::string afkMsg;
         std::string dndMsg;
 
-        uint32 GetBarberShopCost(uint8 newhairstyle, uint8 newhaircolor, uint8 newfacialhair);
+        uint32 GetBarberShopCost(uint8 newhairstyle, uint8 newhaircolor, uint8 newfacialhair, uint8 newskintone);
 
         PlayerSocial *GetSocial() { return m_social; }
 
@@ -1203,7 +1203,7 @@ class MANGOS_DLL_SPEC Player : public Unit
 
         void RemovePet(Pet* pet, PetSaveMode mode, bool returnreagent = false);
         void RemoveMiniPet();
-        Pet* GetMiniPet();
+        Pet* GetMiniPet() const;
         void SetMiniPet(Pet* pet) { m_miniPet = pet->GetGUID(); }
 
         template<typename Func>
@@ -2237,8 +2237,7 @@ class MANGOS_DLL_SPEC Player : public Unit
         void EnterVehicle(Vehicle *vehicle);
         void ExitVehicle(Vehicle *vehicle);
 
-        uint64 GetFarSight() const { return GetUInt64Value(PLAYER_FARSIGHT); }
-        void SetFarSightGUID(uint64 guid);
+        ObjectGuid const& GetFarSightGuid() const { return GetGuidValue(PLAYER_FARSIGHT); }
 
         // Transports
         Transport * GetTransport() const { return m_transport; }
@@ -2770,7 +2769,7 @@ template<typename Func>
 bool Player::CheckAllControlledUnits(Func const& func, bool withTotems, bool withGuardians, bool withCharms, bool withMiniPet) const
 {
     if (withMiniPet)
-        if(Unit* mini = GetMiniPet())
+        if(Unit const* mini = GetMiniPet())
             if (func(mini))
                 return true;
 

@@ -929,7 +929,8 @@ void ObjectMgr::LoadEquipmentTemplates()
                 dbcitem->InventoryType != INVTYPE_WEAPONOFFHAND &&
                 dbcitem->InventoryType != INVTYPE_HOLDABLE &&
                 dbcitem->InventoryType != INVTYPE_THROWN &&
-                dbcitem->InventoryType != INVTYPE_RANGEDRIGHT)
+                dbcitem->InventoryType != INVTYPE_RANGEDRIGHT &&
+                dbcitem->InventoryType != INVTYPE_RELIC)
             {
                 sLog.outErrorDb("Item (entry=%u) in creature_equip_template.equipentry%u for entry = %u is not equipable in a hand, forced to 0.", eqInfo->equipentry[j], j+1, i);
                 const_cast<EquipmentInfo*>(eqInfo)->equipentry[j] = 0;
@@ -7397,8 +7398,7 @@ bool PlayerCondition::Meets(Player const * player) const
             return player->GetQuestRewardStatus(value1);
         case CONDITION_QUESTTAKEN:
         {
-            QuestStatus status = player->GetQuestStatus(value1);
-            return (status == QUEST_STATUS_INCOMPLETE);
+            return player->IsCurrentQuest(value1);
         }
         case CONDITION_AD_COMMISSION_AURA:
         {
@@ -7454,6 +7454,13 @@ bool PlayerCondition::Meets(Player const * player) const
             if (InstanceData* data = player->GetInstanceData())
                 return data->CheckConditionCriteriaMeet(player, value1, value2);
             return false;
+        }
+        case CONDITION_QUESTAVAILABLE:
+        {
+            if (Quest const* quest = sObjectMgr.GetQuestTemplate(value1))
+                return player->CanTakeQuest(quest, false);
+            else
+                false;
         }
         default:
             return false;
@@ -7563,6 +7570,7 @@ bool PlayerCondition::IsValid(ConditionType condition, uint32 value1, uint32 val
         }
         case CONDITION_QUESTREWARDED:
         case CONDITION_QUESTTAKEN:
+        case CONDITION_QUESTAVAILABLE:
         {
             Quest const *Quest = sObjectMgr.GetQuestTemplate(value1);
             if (!Quest)

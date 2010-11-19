@@ -1228,7 +1228,7 @@ void BattleGround::AddPlayer(Player *plr)
         }
 
         plr->DestroyConjuredItems(true);
-        plr->RemovePet(NULL, PET_SAVE_NOT_IN_SLOT);
+        plr->RemovePet(PET_SAVE_REAGENTS);
 
         if(GetStatus() == STATUS_WAIT_JOIN)                 // not started yet
         {

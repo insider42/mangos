@@ -36,7 +36,6 @@ class MANGOS_DLL_DECL PetAI : public CreatureAI
         void EnterEvadeMode();
         void AttackedBy(Unit*);
         bool IsVisible(Unit *) const;
-        void JustDied(Unit* /*who*/) { _stopAttack(); }
 
         void UpdateAI(const uint32);
         static int Permissible(const Creature *);
@@ -50,7 +49,10 @@ class MANGOS_DLL_DECL PetAI : public CreatureAI
 
         TimeTracker i_tracker;
         bool inCombat;
+        bool m_bIsReady;
+        bool m_bIsSpawned;
         std::set<uint64> m_AllySet;
         uint32 m_updateAlliesTimer;
+        uint32 m_uiReadyTimer;
 };
 #endif

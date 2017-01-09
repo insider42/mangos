@@ -31,7 +31,8 @@ Camera::Camera(Player* pl) : m_owner(*pl), m_source(pl)
 Camera::~Camera()
 {
     // view of camera should be already reseted to owner (RemoveFromWorld -> Event_RemovedFromWorld -> ResetView)
-    MANGOS_ASSERT(m_source == &m_owner);	
+    // eye of acherus patch requires to comment this assert
+    // MANGOS_ASSERT(m_source == &m_owner);	
 
     // for symmetry with constructor and way to make viewpoint's list empty
     m_source->GetViewPoint().Detach(this);

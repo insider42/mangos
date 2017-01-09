@@ -529,14 +529,29 @@ namespace MaNGOS
     class RaiseDeadObjectCheck
     {
         public:
-            RaiseDeadObjectCheck(Player const* fobj, float range) : i_fobj(fobj), i_range(range) {}
+            RaiseDeadObjectCheck(Unit const* fobj, float range)
+            {
+                i_range = range;
+
+                if (fobj && fobj->GetTypeId() == TYPEID_PLAYER)
+                    i_fobj = (Player const*)fobj;
+                else
+                    i_fobj = NULL;
+            }
             WorldObject const& GetFocusObject() const { return *i_fobj; }
+            bool operator()(Player* u)
+            {
+                if (i_fobj->IsFriendlyTo(u) || u->isAlive() || u->HasAuraType(SPELL_AURA_GHOST) || u->getDeathState()!=CORPSE ||
+                    u->IsTaxiFlying() || !i_fobj->isHonorOrXPTarget(u))
+                    return false;
+
+                return i_fobj->IsWithinDistInMap(u, i_range);
+            }
             bool operator()(Creature* u)
             {
-                if (i_fobj->isHonorOrXPTarget(u) ||
+                if (i_fobj->isHonorOrXPTarget(u) || u->GetDisplayId() != u->GetNativeDisplayId() ||
                     u->getDeathState() != CORPSE || u->IsDeadByDefault() || u->IsTaxiFlying() ||
-                    ( u->GetCreatureTypeMask() & (1 << (CREATURE_TYPE_HUMANOID-1)) )==0 ||
-                    (u->GetDisplayId() != u->GetNativeDisplayId()))
+                    ( u->GetCreatureTypeMask() & CREATURE_TYPEMASK_HUMANOID_OR_UNDEAD) == 0)
                     return false;
 
                 return i_fobj->IsWithinDistInMap(u, i_range);
@@ -685,6 +700,68 @@ namespace MaNGOS
 
             // prevent clone this object
             NearestGameObjectEntryInObjectRangeCheck(NearestGameObjectEntryInObjectRangeCheck const&);
+    };
+
+    // Success at gameobject in range of xyz, range update for next check (this can be use with GameobjectLastSearcher to find nearest GO)
+    class NearestGameObjectEntryInPosRangeCheck
+    {
+        public:
+            NearestGameObjectEntryInPosRangeCheck(WorldObject const& obj, uint32 entry, float x, float y, float z, float range)
+                : i_obj(obj), i_x(x), i_y(y), i_z(z), i_entry(entry), i_range(range) {}
+
+            WorldObject const& GetFocusObject() const { return i_obj; }
+
+            bool operator()(GameObject* go)
+            {
+                if (go->GetEntry() == i_entry && go->IsWithinDist3d(i_x, i_y, i_z, i_range))
+                {
+                    // use found GO range as new range limit for next check
+                    i_range = go->GetDistance(i_x,i_y,i_z);
+                    return true;
+                }
+
+                return false;
+            }
+
+            float GetLastRange() const { return i_range; }
+
+        private:
+            WorldObject const& i_obj;
+            uint32 i_entry;
+            float i_x, i_y, i_z;
+            float i_range;
+
+            // prevent clone this object
+            NearestGameObjectEntryInPosRangeCheck(NearestGameObjectEntryInPosRangeCheck const&);
+    };
+
+    // Success at gameobject with entry in range of provided xyz
+    class GameObjectEntryInPosRangeCheck
+    {
+        public:
+            GameObjectEntryInPosRangeCheck(WorldObject const& obj, uint32 entry, float x, float y, float z, float range)
+                : i_obj(obj), i_x(x), i_y(y), i_z(z), i_entry(entry), i_range(range) {}
+
+            WorldObject const& GetFocusObject() const { return i_obj; }
+
+            bool operator()(GameObject* go)
+            {
+                if (go->GetEntry() == i_entry && go->IsWithinDist3d(i_x, i_y, i_z, i_range))
+                    return true;
+
+                return false;
+            }
+
+            float GetLastRange() const { return i_range; }
+
+        private:
+            WorldObject const& i_obj;
+            uint32 i_entry;
+            float i_x, i_y, i_z;
+            float i_range;
+
+            // prevent clone this object
+            GameObjectEntryInPosRangeCheck(GameObjectEntryInPosRangeCheck const&);
     };
 
     class GameObjectWithDbGUIDCheck

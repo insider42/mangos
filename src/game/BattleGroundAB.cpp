@@ -114,6 +114,7 @@ void BattleGroundAB::Update(uint32 diff)
                 m_TeamScores[team] += BG_AB_TickPoints[points];
                 m_HonorScoreTics[team] += BG_AB_TickPoints[points];
                 m_ReputationScoreTics[team] += BG_AB_TickPoints[points];
+                m_ExperiencesTicks[team] += BG_AB_TickPoints[points];
                 if (m_ReputationScoreTics[team] >= m_ReputationTics)
                 {
                     (team == BG_TEAM_ALLIANCE) ? RewardReputationToTeam(509, 10, ALLIANCE) : RewardReputationToTeam(510, 10, HORDE);
@@ -132,6 +133,11 @@ void BattleGroundAB::Update(uint32 diff)
                         SendMessageToAll(LANG_BG_AB_H_NEAR_VICTORY, CHAT_MSG_BG_SYSTEM_NEUTRAL);
                     PlaySoundToAll(BG_AB_SOUND_NEAR_VICTORY);
                     m_IsInformedNearVictory = true;
+                }
+                if (m_ExperiencesTicks[team] >= BG_AB_ExperiencesTicks)
+                {
+                    RewardXpToTeam(0, 0.8f, team);
+                    m_ExperiencesTicks[team] -= BG_AB_ExperiencesTicks;
                 }
 
                 if (m_TeamScores[team] > BG_AB_MAX_TEAM_SCORE)
@@ -182,10 +188,10 @@ void BattleGroundAB::AddPlayer(Player *plr)
     //create score and add it to map, default values are set in the constructor
     BattleGroundABScore* sc = new BattleGroundABScore;
 
-    m_PlayerScores[plr->GetGUID()] = sc;
+    m_PlayerScores[plr->GetObjectGuid()] = sc;
 }
 
-void BattleGroundAB::RemovePlayer(Player * /*plr*/, uint64 /*guid*/)
+void BattleGroundAB::RemovePlayer(Player * /*plr*/, ObjectGuid /*guid*/)
 {
 
 }
@@ -340,7 +346,7 @@ void BattleGroundAB::EventPlayerClickedOnFlag(Player *source, GameObject* target
         return;
     BG_AB_Nodes node = BG_AB_Nodes(event);
 
-    BattleGroundTeamId teamIndex = GetTeamIndexByTeamId(source->GetTeam());
+    BattleGroundTeamIndex teamIndex = GetTeamIndexByTeamId(source->GetTeam());
 
     // Check if player really could use this banner, not cheated
     if (!(m_Nodes[node] == 0 || teamIndex == m_Nodes[node] % 2))
@@ -463,6 +469,7 @@ void BattleGroundAB::Reset()
         m_lastTick[i]            = 0;
         m_HonorScoreTics[i]      = 0;
         m_ReputationScoreTics[i] = 0;
+        m_ExperiencesTicks[i]    = 0;
         m_TeamScores500Disadvantage[i] = false;
     }
 
@@ -484,23 +491,33 @@ void BattleGroundAB::Reset()
 
 }
 
-void BattleGroundAB::EndBattleGround(uint32 winner)
+void BattleGroundAB::EndBattleGround(Team winner)
 {
     //win reward
     if (winner == ALLIANCE)
+    {
         RewardHonorToTeam(GetBonusHonorFromKill(1), ALLIANCE);
+        RewardXpToTeam(0, 0.8f, winner);
+    }
     if (winner == HORDE)
+    {
         RewardHonorToTeam(GetBonusHonorFromKill(1), HORDE);
+        RewardXpToTeam(0, 0.8f, winner);
+    }
+
     //complete map_end rewards (even if no team wins)
     RewardHonorToTeam(GetBonusHonorFromKill(1), HORDE);
     RewardHonorToTeam(GetBonusHonorFromKill(1), ALLIANCE);
+
+    RewardXpToTeam(0, 0.8f, HORDE);
+    RewardXpToTeam(0, 0.8f, ALLIANCE);
 
     BattleGround::EndBattleGround(winner);
 }
 
 WorldSafeLocsEntry const* BattleGroundAB::GetClosestGraveYard(Player* player)
 {
-    BattleGroundTeamId teamIndex = GetTeamIndexByTeamId(player->GetTeam());
+    BattleGroundTeamIndex teamIndex = GetTeamIndexByTeamId(player->GetTeam());
 
     // Is there any occupied node for this team?
     std::vector<uint8> nodes;
@@ -539,7 +556,7 @@ WorldSafeLocsEntry const* BattleGroundAB::GetClosestGraveYard(Player* player)
 
 void BattleGroundAB::UpdatePlayerScore(Player *Source, uint32 type, uint32 value)
 {
-    BattleGroundScoreMap::iterator itr = m_PlayerScores.find(Source->GetGUID());
+    BattleGroundScoreMap::iterator itr = m_PlayerScores.find(Source->GetObjectGuid());
     if( itr == m_PlayerScores.end() )                         // player not found...
         return;
 
@@ -557,7 +574,7 @@ void BattleGroundAB::UpdatePlayerScore(Player *Source, uint32 type, uint32 value
     }
 }
 
-bool BattleGroundAB::IsAllNodesConrolledByTeam(uint32 team) const
+bool BattleGroundAB::IsAllNodesConrolledByTeam(Team team) const
 {
     uint32 count = 0;
     for (int i = 0; i < BG_AB_NODES_MAX; ++i)

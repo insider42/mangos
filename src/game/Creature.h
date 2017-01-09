@@ -23,6 +23,7 @@
 #include "Unit.h"
 #include "UpdateMask.h"
 #include "ItemPrototype.h"
+#include "SharedDefines.h"
 #include "LootMgr.h"
 #include "DBCEnums.h"
 #include "Database/DatabaseEnv.h"
@@ -49,6 +50,7 @@ enum CreatureFlagsExtra
     CREATURE_FLAG_EXTRA_NO_XP_AT_KILL   = 0x00000040,       // creature kill not provide XP
     CREATURE_FLAG_EXTRA_INVISIBLE       = 0x00000080,       // creature is always invisible for player (mostly trigger creatures)
     CREATURE_FLAG_EXTRA_NOT_TAUNTABLE   = 0x00000100,       // creature is immune to taunt auras and effect attack me
+    CREATURE_FLAG_PARTIAL_XP_REWARDED   = 0x00000800,       // creature kill provide 1/8 of normal XP
 };
 
 // GCC have alternative #pragma pack(N) syntax and old gcc version not support pack(push,N), also any gcc version not support it at some platform
@@ -129,6 +131,7 @@ struct CreatureInfo
     uint32  movementId;
     bool    RegenHealth;
     uint32  equipmentId;
+    uint32  trainerId;
     uint32  vendorId;
     uint32  MechanicImmuneMask;
     uint32  flags_extra;
@@ -196,13 +199,14 @@ struct CreatureDataAddonAura
     SpellEffectIndex effect_idx;
 };
 
-// from `creature_addon` table
+// from `creature_addon` and `creature_template_addon`tables
 struct CreatureDataAddon
 {
     uint32 guidOrEntry;
     uint32 mount;
     uint32 bytes1;
-    uint32 bytes2;
+    uint8  sheath_state;                                    // SheathState
+    uint8  pvp_state;                                       // UnitPVPStateFlags
     uint32 emote;
     uint32 splineFlags;
     CreatureDataAddonAura const* auras;                     // loaded as char* "spell1 eff1 spell2 eff2 ... "
@@ -394,7 +398,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
         void AddToWorld();
         void RemoveFromWorld();
 
-        bool Create(uint32 guidlow, Map *map, uint32 phaseMask, uint32 Entry, uint32 team, const CreatureData *data = NULL);
+        bool Create(uint32 guidlow, Map *map, uint32 phaseMask, uint32 Entry, Team team = TEAM_NONE, const CreatureData *data = NULL);
         bool LoadCreatureAddon(bool reload = false);
         void SelectLevel(const CreatureInfo *cinfo, float percentHealth = 100.0f, float percentMana = 100.0f);
         void LoadEquipment(uint32 equip_entry, bool force=false);
@@ -496,7 +500,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
 
         bool HasSpell(uint32 spellID) const;
 
-        bool UpdateEntry(uint32 entry, uint32 team = ALLIANCE, const CreatureData* data = NULL, bool preserveHPAndPower = true);
+        bool UpdateEntry(uint32 entry, Team team = ALLIANCE, const CreatureData* data = NULL, bool preserveHPAndPower = true);
         bool UpdateStats(Stats stat);
         bool UpdateAllStats();
         void UpdateResistances(uint32 school);
@@ -513,6 +517,7 @@ class MANGOS_DLL_SPEC Creature : public Unit
         uint32 GetVendorItemCurrentCount(VendorItem const* vItem);
         uint32 UpdateVendorItemCurrentCount(VendorItem const* vItem, uint32 used_count);
 
+        TrainerSpellData const* GetTrainerTemplateSpells() const;
         TrainerSpellData const* GetTrainerSpells() const;
 
         CreatureInfo const *GetCreatureInfo() const { return m_creatureInfo; }
@@ -523,12 +528,6 @@ class MANGOS_DLL_SPEC Creature : public Unit
         std::string GetAIName() const;
         std::string GetScriptName() const;
         uint32 GetScriptId() const;
-
-        void Say(int32 textId, uint32 language, ObjectGuid targetGuid) { MonsterSay(textId, language, targetGuid); }
-        void Yell(int32 textId, uint32 language, ObjectGuid targetGuid) { MonsterYell(textId, language, targetGuid); }
-        void TextEmote(int32 textId, ObjectGuid targetGuid, bool IsBossEmote = false) { MonsterTextEmote(textId, targetGuid, IsBossEmote); }
-        void Whisper(int32 textId, ObjectGuid targetGuid, bool IsBossWhisper = false) { MonsterWhisper(textId, targetGuid, IsBossWhisper); }
-        void YellToZone(int32 textId, uint32 language, ObjectGuid targetGuid) { MonsterYellToZone(textId, language, targetGuid); }
 
         // overwrite WorldObject function for proper name localization
         const char* GetNameForLocaleIdx(int32 locale_idx) const;
@@ -641,8 +640,8 @@ class MANGOS_DLL_SPEC Creature : public Unit
         void SendAreaSpiritHealerQueryOpcode(Player *pl);
 
     protected:
-        bool CreateFromProto(uint32 guidlow,uint32 Entry,uint32 team, const CreatureData *data = NULL);
-        bool InitEntry(uint32 entry, uint32 team=ALLIANCE, const CreatureData* data=NULL);
+        bool CreateFromProto(uint32 guidlow,uint32 Entry, Team team, const CreatureData *data = NULL);
+        bool InitEntry(uint32 entry, const CreatureData* data=NULL);
         void RelocationNotify();
 
         uint32 m_groupLootTimer;                            // (msecs)timer used for group loot

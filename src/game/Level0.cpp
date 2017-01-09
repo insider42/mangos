@@ -28,6 +28,7 @@
 #include "SystemConfig.h"
 #include "revision.h"
 #include "revision_nr.h"
+#include "revision_andeeria_nr.h"
 #include "Util.h"
 
 bool ChatHandler::HandleHelpCommand(char* args)
@@ -96,9 +97,9 @@ bool ChatHandler::HandleServerInfoCommand(char* /*args*/)
 
     char const* full;
     if(m_session)
-        full = _FULLVERSION(REVISION_DATE,REVISION_TIME,REVISION_NR,"|cffffffff|Hurl:" REVISION_ID "|h" REVISION_ID "|h|r");
+        full = _FULLVERSION(REVISION_ANDEERIA_NR, REVISION_NR);
     else
-        full = _FULLVERSION(REVISION_DATE,REVISION_TIME,REVISION_NR,REVISION_ID);
+        full = _FULLVERSION(REVISION_ANDEERIA_NR, REVISION_NR);
 
     SendSysMessage(full);
     PSendSysMessage(LANG_USING_SCRIPT_LIB,sWorld.GetScriptsVersion());

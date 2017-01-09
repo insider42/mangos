@@ -27,6 +27,10 @@
 #include "LootMgr.h"
 #include "Unit.h"
 #include "Player.h"
+#include "../../dep/tbb/include/tbb/concurrent_vector.h"
+#include <memory>
+
+#define MAX_SPELL_ID    100000
 
 class WorldSession;
 class WorldPacket;
@@ -257,6 +261,7 @@ class Spell
         void EffectProficiency(SpellEffectIndex eff_idx);
         void EffectApplyAreaAura(SpellEffectIndex eff_idx);
         void EffectSummonType(SpellEffectIndex eff_idx);
+        void EffectSummonPossessed(SpellEffectIndex eff_idx);
         void EffectLearnSpell(SpellEffectIndex eff_idx);
         void EffectDispel(SpellEffectIndex eff_idx);
         void EffectDualWield(SpellEffectIndex eff_idx);
@@ -389,6 +394,7 @@ class Spell
         void DoCreateItem(SpellEffectIndex eff_idx, uint32 itemtype);
         void DoSummon(SpellEffectIndex eff_idx);
         void DoSummonWild(SpellEffectIndex eff_idx, uint32 forceFaction = 0);
+        void DoSummonSnakes(SpellEffectIndex eff_idx, uint32 forceFaction = 0);
         void DoSummonGuardian(SpellEffectIndex eff_idx, uint32 forceFaction = 0);
         void DoSummonTotem(SpellEffectIndex eff_idx, uint8 slot_dbc = 0);
         void DoSummonCritter(SpellEffectIndex eff_idx, uint32 forceFaction = 0);
@@ -580,9 +586,11 @@ class Spell
             SpellMissInfo reflectResult:8;
             uint8  effectMask:8;
             bool   processed:1;
+            bool   deleted:1;
         };
-        std::list<TargetInfo> m_UniqueTargetInfo;
+        tbb::concurrent_vector<TargetInfo> m_UniqueTargetInfo;
         uint8 m_needAliveTargetMask;                        // Mask req. alive targets
+        bool m_destroyed;
 
         struct GOTargetInfo
         {
@@ -590,8 +598,9 @@ class Spell
             uint64 timeDelay;
             uint8  effectMask:8;
             bool   processed:1;
+            bool   deleted:1;
         };
-        std::list<GOTargetInfo> m_UniqueGOTargetInfo;
+        tbb::concurrent_vector<GOTargetInfo> m_UniqueGOTargetInfo;
 
         struct ItemTargetInfo
         {

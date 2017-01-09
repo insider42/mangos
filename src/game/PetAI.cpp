@@ -40,10 +40,23 @@ PetAI::PetAI(Creature *c) : CreatureAI(c), i_tracker(TIME_INTERVAL_LOOK), inComb
 {
     m_AllySet.clear();
     UpdateAllies();
+
+    // DK Ghoul - spawn animation
+    if (m_creature->GetEntry() == 26125)
+    {
+        m_uiReadyTimer = 4000;
+        m_bIsSpawned = false;
+        m_bIsReady = false;
+    }
+    else
+        m_bIsReady = true;
 }
 
 void PetAI::MoveInLineOfSight(Unit *u)
 {
+    if (!m_bIsReady)
+        return;
+
     if (m_creature->getVictim())
         return;
 
@@ -69,7 +82,7 @@ void PetAI::MoveInLineOfSight(Unit *u)
 
 void PetAI::AttackStart(Unit *u)
 {
-    if(!u || (m_creature->IsPet() && ((Pet*)m_creature)->getPetType() == MINI_PET))
+    if(!u || (m_creature->IsPet() && ((Pet*)m_creature)->getPetType() == MINI_PET) || !m_bIsReady)
         return;
 
     if(m_creature->Attack(u,true))
@@ -104,17 +117,6 @@ bool PetAI::_needToStop() const
 void PetAI::_stopAttack()
 {
     inCombat = false;
-    if( !m_creature->isAlive() )
-    {
-        DEBUG_FILTER_LOG(LOG_FILTER_AI_AND_MOVEGENSS, "PetAI (guid = %u) stopped attack, he is dead.", m_creature->GetGUIDLow());
-        m_creature->StopMoving();
-        m_creature->GetMotionMaster()->Clear();
-        m_creature->GetMotionMaster()->MoveIdle();
-        m_creature->CombatStop();
-        m_creature->getHostileRefManager().deleteReferences();
-
-        return;
-    }
 
     Unit* owner = m_creature->GetCharmerOrOwner();
 
@@ -134,6 +136,25 @@ void PetAI::UpdateAI(const uint32 diff)
 {
     if (!m_creature->isAlive())
         return;
+
+    // spawn animation and any other preparing stuff
+    if (!m_bIsReady)
+    {
+        if (!m_bIsSpawned)
+        {
+            if (m_creature->GetEntry() == 26125)
+            {
+                m_creature->HandleEmote(EMOTE_ONESHOT_EMERGE);
+                m_bIsSpawned = true;
+            }
+        }
+
+        if (m_uiReadyTimer <= diff)
+            m_bIsReady = true;
+        else m_uiReadyTimer -= diff;
+
+        return;
+    }
 
     Unit* owner = m_creature->GetCharmerOrOwner();
 

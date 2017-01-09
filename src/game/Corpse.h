@@ -65,7 +65,7 @@ class Corpse : public WorldObject
         void DeleteBonesFromWorld();
         void DeleteFromDB();
 
-        uint64 const& GetOwnerGUID() const { return GetUInt64Value(CORPSE_FIELD_OWNER); }
+        ObjectGuid const& GetOwnerGuid() const { return GetGuidValue(CORPSE_FIELD_OWNER); }
 
         time_t const& GetGhostTime() const { return m_time; }
         void ResetGhostTime() { m_time = time(NULL); }
@@ -82,12 +82,6 @@ class Corpse : public WorldObject
         Loot loot;                                          // remove insignia ONLY at BG
         Player* lootRecipient;
         bool lootForBody;
-
-        void Say(int32 textId, uint32 language, ObjectGuid targetGuid) { MonsterSay(textId, language, targetGuid); }
-        void Yell(int32 textId, uint32 language, ObjectGuid targetGuid) { MonsterYell(textId, language, targetGuid); }
-        void TextEmote(int32 textId, ObjectGuid targetGuid) { MonsterTextEmote(textId, targetGuid); }
-        void Whisper(int32 textId, ObjectGuid targetGuid) { MonsterWhisper(textId, targetGuid); }
-        void YellToZone(int32 textId, uint32 language, ObjectGuid targetGuid) { MonsterYellToZone(textId,language, targetGuid); }
 
         GridReference<Corpse> &GetGridRef() { return m_gridRef; }
 

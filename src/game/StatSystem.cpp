@@ -108,8 +108,9 @@ void Player::UpdateSpellDamageAndHealingBonus()
     // Get healing bonus for all schools
     SetStatInt32Value(PLAYER_FIELD_MOD_HEALING_DONE_POS, SpellBaseHealingBonusDone(SPELL_SCHOOL_MASK_ALL));
     // Get damage bonus for all schools
+    // PLAYER_FIELD_MOD_DAMAGE_DONE_NEG field handled in Aura::HandleModDamageDone
     for(int i = SPELL_SCHOOL_HOLY; i < MAX_SPELL_SCHOOL; ++i)
-        SetStatInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS+i, SpellBaseDamageBonusDone(SpellSchoolMask(1 << i)));
+        SetStatInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS+i, SpellBaseDamageBonusDone(SpellSchoolMask(1 << i)) - GetInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG+i));
 }
 
 bool Player::UpdateAllStats()
@@ -267,7 +268,7 @@ void Player::UpdateAttackPowerAndDamage(bool ranged )
             case CLASS_ROGUE:  val2 = level        + GetStat(STAT_AGILITY) - 10.0f;    break;
             case CLASS_WARRIOR:val2 = level        + GetStat(STAT_AGILITY) - 10.0f;    break;
             case CLASS_DRUID:
-                switch(m_form)
+                switch(GetShapeshiftForm())
                 {
                     case FORM_CAT:
                     case FORM_BEAR:
@@ -292,10 +293,11 @@ void Player::UpdateAttackPowerAndDamage(bool ranged )
             case CLASS_SHAMAN:       val2 = level*2.0f + GetStat(STAT_STRENGTH) + GetStat(STAT_AGILITY) - 20.0f; break;
             case CLASS_DRUID:
             {
+                ShapeshiftForm form = GetShapeshiftForm();
                 //Check if Predatory Strikes is skilled
                 float mLevelBonus = 0.0f;
                 float mBonusWeaponAtt = 0.0f;
-                switch(m_form)
+                switch(form)
                 {
                     case FORM_CAT:
                     case FORM_BEAR:
@@ -323,7 +325,7 @@ void Player::UpdateAttackPowerAndDamage(bool ranged )
                     default: break;
                 }
 
-                switch(m_form)
+                switch(form)
                 {
                     case FORM_CAT:
                         val2 = GetStat(STAT_STRENGTH)*2.0f + GetStat(STAT_AGILITY) - 20.0f + mLevelBonus + m_baseFeralAP + mBonusWeaponAtt; break;
@@ -873,7 +875,28 @@ bool Pet::UpdateStats(Stats stat)
     float value  = GetTotalStatValue(stat);
 
     Unit *owner = GetOwner();
-    if ( stat == STAT_STAMINA )
+
+    // Death Knight's Risen Ghouls
+    if ((stat == STAT_STAMINA || stat == STAT_STRENGTH) && GetEntry() == 26125 && owner)
+    {
+        float mod = (stat == STAT_STAMINA) ? 0.3f : 0.7f;
+        float ravenous = 1.0f;                                      // Ravenous Dead talent's modifier
+        float glyph = 0.0f;                                         // Glyph of the Ghoul talent's modifier
+
+        // Glyph of the Ghoul
+        if (SpellAuraHolder *pGlyph = owner->GetSpellAuraHolder(58686) )
+            if (SpellEntry const *spellInfo = pGlyph->GetSpellProto() )
+                glyph = float(spellInfo->CalculateSimpleValue(EFFECT_INDEX_0)) / 100.0f;
+
+        // Ravenous Dead
+        AuraList const& lAuras = owner->GetAurasByType(SPELL_AURA_MOD_TOTAL_STAT_PERCENTAGE);
+        for (AuraList::const_iterator itr = lAuras.begin(); itr != lAuras.end(); itr++)
+            if ( (*itr)->GetSpellProto()->SpellIconID == 3010){
+                ravenous += float((*itr)->GetSpellProto()->CalculateSimpleValue(EFFECT_INDEX_1) / 100.0f); break;}
+
+            value += float(owner->GetStat(stat) * (mod * ravenous + glyph) );
+    }
+    else if ( stat == STAT_STAMINA )
     {
         if(owner && owner->GetTypeId() == TYPEID_PLAYER  && owner->getClass() == CLASS_WARLOCK)
             value += float(owner->GetStat(stat)) * 0.75f;
@@ -941,8 +964,8 @@ void Pet::UpdateArmor()
     UnitMods unitMod = UNIT_MOD_ARMOR;
 
     Unit *owner = GetOwner();
-    // hunter and warlock pets gain 35% of owner's armor value
-    if(owner && (getPetType() == HUNTER_PET || (getPetType() == SUMMON_PET && owner->getClass() == CLASS_WARLOCK)))
+    // hunter, shaman and warlock pets gain 35% of owner's armor value
+    if(owner && (getPetType() == HUNTER_PET || (getPetType() == SUMMON_PET && (owner->getClass() == CLASS_WARLOCK || owner->getClass() == CLASS_SHAMAN))))
         bonus_armor = 0.35f * float(owner->GetArmor());
 
     value  = GetModifierValue(unitMod, BASE_VALUE);
@@ -1030,8 +1053,8 @@ void Pet::UpdateAttackPowerAndDamage(bool ranged)
         //demons benefit from warlocks shadow or fire damage
         else if(getPetType() == SUMMON_PET && owner->getClass() == CLASS_WARLOCK)
         {
-            int32 fire  = int32(owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_FIRE)) - owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + SPELL_SCHOOL_FIRE);
-            int32 shadow = int32(owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_SHADOW)) - owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + SPELL_SCHOOL_SHADOW);
+            int32 fire = int32(owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_FIRE)) - owner->GetInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + SPELL_SCHOOL_FIRE);
+            int32 shadow = int32(owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_SHADOW)) - owner->GetInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + SPELL_SCHOOL_SHADOW);
             int32 maximum  = (fire > shadow) ? fire : shadow;
             if(maximum < 0)
                 maximum = 0;
@@ -1041,10 +1064,15 @@ void Pet::UpdateAttackPowerAndDamage(bool ranged)
         //water elementals benefit from mage's frost damage
         else if(getPetType() == SUMMON_PET && owner->getClass() == CLASS_MAGE)
         {
-            int32 frost = int32(owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_FROST)) - owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + SPELL_SCHOOL_FROST);
+            int32 frost = int32(owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_FROST)) - owner->GetInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_NEG + SPELL_SCHOOL_FROST);
             if(frost < 0)
                 frost = 0;
             SetBonusDamage( int32(frost * 0.4f));
+        }
+        // gargoyles benefit from DK's AP: $AP*0.333 for Gargoyle Strike AP coefficient
+        else if (owner->getClass() == CLASS_DEATH_KNIGHT && GetEntry() == 27829)
+        {
+            bonusAP = owner->GetTotalAttackPowerValue(BASE_ATTACK) * 0.333f;
         }
     }
 

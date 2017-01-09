@@ -25,6 +25,7 @@
 #include "GridStates.h"
 #include "CellImpl.h"
 #include "InstanceData.h"
+#include "Mail.h"
 #include "GridNotifiersImpl.h"
 #include "Transports.h"
 #include "ObjectAccessor.h"
@@ -37,14 +38,6 @@
 #include "InstanceSaveMgr.h"
 #include "VMapFactory.h"
 #include "BattleGroundMgr.h"
-
-struct ScriptAction
-{
-    ObjectGuid sourceGuid;
-    ObjectGuid targetGuid;
-    ObjectGuid ownerGuid;                                   // owner of source if source is item
-    ScriptInfo const* script;                               // pointer to static script data
-};
 
 Map::~Map()
 {
@@ -226,24 +219,20 @@ Map::EnsureGridCreated(const GridPair &p)
 {
     if(!getNGrid(p.x_coord, p.y_coord))
     {
-        Guard guard(*this);
-        if(!getNGrid(p.x_coord, p.y_coord))
-        {
-            setNGrid(new NGridType(p.x_coord*MAX_NUMBER_OF_GRIDS + p.y_coord, p.x_coord, p.y_coord, i_gridExpiry, sWorld.getConfig(CONFIG_BOOL_GRID_UNLOAD)),
-                p.x_coord, p.y_coord);
+        setNGrid(new NGridType(p.x_coord*MAX_NUMBER_OF_GRIDS + p.y_coord, p.x_coord, p.y_coord, i_gridExpiry, sWorld.getConfig(CONFIG_BOOL_GRID_UNLOAD)),
+            p.x_coord, p.y_coord);
 
-            // build a linkage between this map and NGridType
-            buildNGridLinkage(getNGrid(p.x_coord, p.y_coord));
+        // build a linkage between this map and NGridType
+        buildNGridLinkage(getNGrid(p.x_coord, p.y_coord));
 
-            getNGrid(p.x_coord, p.y_coord)->SetGridState(GRID_STATE_IDLE);
+        getNGrid(p.x_coord, p.y_coord)->SetGridState(GRID_STATE_IDLE);
 
-            //z coord
-            int gx = (MAX_NUMBER_OF_GRIDS - 1) - p.x_coord;
-            int gy = (MAX_NUMBER_OF_GRIDS - 1) - p.y_coord;
+        //z coord
+        int gx = (MAX_NUMBER_OF_GRIDS - 1) - p.x_coord;
+        int gy = (MAX_NUMBER_OF_GRIDS - 1) - p.y_coord;
 
-            if(!m_bLoadedGrids[gx][gy])
-                LoadMapAndVMap(gx,gy);
-        }
+        if(!m_bLoadedGrids[gx][gy])
+            LoadMapAndVMap(gx,gy);
     }
 }
 
@@ -360,7 +349,7 @@ Map::Add(T *obj)
     if(obj->isActiveObject())
         AddToActive(obj);
 
-    DEBUG_LOG("Object %u enters grid[%u,%u]", GUID_LOPART(obj->GetGUID()), cell.GridX(), cell.GridY());
+    DEBUG_LOG("%s enters grid[%u,%u]", obj->GetObjectGuid().GetString().c_str(), cell.GridX(), cell.GridY());
 
     obj->GetViewPoint().Event_AddedToWorld(&(*grid)(cell.CellX(), cell.CellY()));
     UpdateObjectVisibility(obj,cell,p);
@@ -461,6 +450,20 @@ bool Map::loaded(const GridPair &p) const
 
 void Map::Update(const uint32 &t_diff)
 {
+    /// update worldsessions for existing players
+    for(m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
+    {
+        Player* plr = m_mapRefIter->getSource();
+        if(plr && plr->IsInWorld())
+        {
+            //plr->Update(t_diff);
+            WorldSession * pSession = plr->GetSession();
+            MapSessionFilter updater(pSession);
+
+            pSession->Update(t_diff, updater);
+        }
+    }
+
     /// update players at tick
     for(m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
@@ -1304,122 +1307,117 @@ bool InstanceMap::Add(Player *player)
     // GMs still can teleport player in instance.
     // Is it needed?
 
-    {
-        Guard guard(*this);
-        if (!CanEnter(player))
-            return false;
+    if (!CanEnter(player))
+        return false;
 
-        // Dungeon only code
-        if (IsDungeon())
+    // Dungeon only code
+    if (IsDungeon())
+    {
+        // check for existing instance binds
+        InstancePlayerBind *playerBind = player->GetBoundInstance(GetId(), GetDifficulty());
+        if (playerBind && playerBind->perm)
         {
-            // check for existing instance binds
-            InstancePlayerBind *playerBind = player->GetBoundInstance(GetId(), GetDifficulty());
-            if (playerBind && playerBind->perm)
+            // cannot enter other instances if bound permanently
+            if (playerBind->save != GetInstanceSave())
             {
-                // cannot enter other instances if bound permanently
-                if (playerBind->save != GetInstanceSave())
+                sLog.outError("InstanceMap::Add: player %s(%d) is permanently bound to instance %d,%d,%d,%d,%d,%d but he is being put in instance %d,%d,%d,%d,%d,%d",
+                    player->GetName(), player->GetGUIDLow(), playerBind->save->GetMapId(),
+                    playerBind->save->GetInstanceId(), playerBind->save->GetDifficulty(),
+                    playerBind->save->GetPlayerCount(), playerBind->save->GetGroupCount(),
+                    playerBind->save->CanReset(),
+                    GetInstanceSave()->GetMapId(), GetInstanceSave()->GetInstanceId(),
+                    GetInstanceSave()->GetDifficulty(), GetInstanceSave()->GetPlayerCount(),
+                    GetInstanceSave()->GetGroupCount(), GetInstanceSave()->CanReset());
+                MANGOS_ASSERT(false);
+
+            }
+        }
+        else
+        {
+            Group *pGroup = player->GetGroup();
+            if (pGroup)
+            {
+                // solo saves should be reset when entering a group
+                InstanceGroupBind *groupBind = pGroup->GetBoundInstance(this,GetDifficulty());
+                if (playerBind)
                 {
-                    sLog.outError("InstanceMap::Add: player %s(%d) is permanently bound to instance %d,%d,%d,%d,%d,%d but he is being put in instance %d,%d,%d,%d,%d,%d",
-                        player->GetName(), player->GetGUIDLow(), playerBind->save->GetMapId(),
-                        playerBind->save->GetInstanceId(), playerBind->save->GetDifficulty(),
-                        playerBind->save->GetPlayerCount(), playerBind->save->GetGroupCount(),
-                        playerBind->save->CanReset(),
-                        GetInstanceSave()->GetMapId(), GetInstanceSave()->GetInstanceId(),
-                        GetInstanceSave()->GetDifficulty(), GetInstanceSave()->GetPlayerCount(),
-                        GetInstanceSave()->GetGroupCount(), GetInstanceSave()->CanReset());
-                    player->RepopAtGraveyard();
-                    return false;
+                    sLog.outError("InstanceMap::Add: %s is being put in instance %d,%d,%d,%d,%d,%d but he is in group (Id: %d) and is bound to instance %d,%d,%d,%d,%d,%d!",
+                        player->GetGuidStr().c_str(), GetInstanceSave()->GetMapId(), GetInstanceSave()->GetInstanceId(),
+                        GetInstanceSave()->GetDifficulty(), GetInstanceSave()->GetPlayerCount(), GetInstanceSave()->GetGroupCount(),
+                        GetInstanceSave()->CanReset(), pGroup->GetId(),
+                        playerBind->save->GetMapId(), playerBind->save->GetInstanceId(), playerBind->save->GetDifficulty(),
+                        playerBind->save->GetPlayerCount(), playerBind->save->GetGroupCount(), playerBind->save->CanReset());
+
+                    if (groupBind)
+                        sLog.outError("InstanceMap::Add: the group (Id: %d) is bound to instance %d,%d,%d,%d,%d,%d",
+                        pGroup->GetId(),
+                        groupBind->save->GetMapId(), groupBind->save->GetInstanceId(), groupBind->save->GetDifficulty(),
+                        groupBind->save->GetPlayerCount(), groupBind->save->GetGroupCount(), groupBind->save->CanReset());
+
+                    // no reason crash if we can fix state
+                    player->UnbindInstance(GetId(), GetDifficulty());
+                }
+
+                // bind to the group or keep using the group save
+                if (!groupBind)
+                    pGroup->BindToInstance(GetInstanceSave(), false);
+                else
+                {
+                    // cannot jump to a different instance without resetting it
+                    if (groupBind->save != GetInstanceSave())
+                    {
+                        sLog.outError("InstanceMap::Add: %s is being put in instance %d,%d,%d but he is in group (Id: %d) which is bound to instance %d,%d,%d!",
+                            player->GetGuidStr().c_str(), GetInstanceSave()->GetMapId(),
+                            GetInstanceSave()->GetInstanceId(), GetInstanceSave()->GetDifficulty(),
+                            pGroup->GetId(), groupBind->save->GetMapId(),
+                            groupBind->save->GetInstanceId(), groupBind->save->GetDifficulty());
+
+                        if (GetInstanceSave())
+                            sLog.outError("MapSave players: %d, group count: %d",
+                            GetInstanceSave()->GetPlayerCount(), GetInstanceSave()->GetGroupCount());
+                        else
+                            sLog.outError("MapSave NULL");
+
+                        if (groupBind->save)
+                            sLog.outError("GroupBind save players: %d, group count: %d", groupBind->save->GetPlayerCount(), groupBind->save->GetGroupCount());
+                        else
+                            sLog.outError("GroupBind save NULL");
+                        MANGOS_ASSERT(false);
+
+                    }
+                    // if the group/leader is permanently bound to the instance
+                    // players also become permanently bound when they enter
+                    if (groupBind->perm)
+                    {
+                        WorldPacket data(SMSG_INSTANCE_SAVE_CREATED, 4);
+                        data << uint32(0);
+                        player->GetSession()->SendPacket(&data);
+                        player->BindToInstance(GetInstanceSave(), true);
+                    }
                 }
             }
             else
             {
-                Group *pGroup = player->GetGroup();
-                if (pGroup)
-                {
-                    // solo saves should be reset when entering a group
-                    InstanceGroupBind *groupBind = pGroup->GetBoundInstance(this,GetDifficulty());
-                    if (playerBind)
-                    {
-                        sLog.outError("InstanceMap::Add: %s is being put in instance %d,%d,%d,%d,%d,%d but he is in group (Id: %d) and is bound to instance %d,%d,%d,%d,%d,%d!",
-                            player->GetObjectGuid().GetString().c_str(), GetInstanceSave()->GetMapId(), GetInstanceSave()->GetInstanceId(),
-                            GetInstanceSave()->GetDifficulty(), GetInstanceSave()->GetPlayerCount(), GetInstanceSave()->GetGroupCount(),
-                            GetInstanceSave()->CanReset(), pGroup->GetId(),
-                            playerBind->save->GetMapId(), playerBind->save->GetInstanceId(), playerBind->save->GetDifficulty(),
-                            playerBind->save->GetPlayerCount(), playerBind->save->GetGroupCount(), playerBind->save->CanReset());
-
-                        if (groupBind)
-                            sLog.outError("InstanceMap::Add: the group (Id: %d) is bound to instance %d,%d,%d,%d,%d,%d",
-                                pGroup->GetId(),
-                                groupBind->save->GetMapId(), groupBind->save->GetInstanceId(), groupBind->save->GetDifficulty(),
-                                groupBind->save->GetPlayerCount(), groupBind->save->GetGroupCount(), groupBind->save->CanReset());
-
-                        // no reason crash if we can fix state
-                        player->UnbindInstance(GetId(), GetDifficulty());
-                    }
-
-                    // bind to the group or keep using the group save
-                    if (!groupBind)
-                        pGroup->BindToInstance(GetInstanceSave(), false);
-                    else
-                    {
-                        // cannot jump to a different instance without resetting it
-                        if (groupBind->save != GetInstanceSave())
-                        {
-                            sLog.outError("InstanceMap::Add: %s is being put in instance %d,%d,%d but he is in group (Id: %d) which is bound to instance %d,%d,%d!",
-                                player->GetObjectGuid().GetString().c_str(), GetInstanceSave()->GetMapId(),
-                                GetInstanceSave()->GetInstanceId(), GetInstanceSave()->GetDifficulty(),
-                                pGroup->GetId(), groupBind->save->GetMapId(),
-                                groupBind->save->GetInstanceId(), groupBind->save->GetDifficulty());
-
-                            if (GetInstanceSave())
-                                sLog.outError("MapSave players: %d, group count: %d",
-                                    GetInstanceSave()->GetPlayerCount(), GetInstanceSave()->GetGroupCount());
-                            else
-                                sLog.outError("MapSave NULL");
-
-                            if (groupBind->save)
-                                sLog.outError("GroupBind save players: %d, group count: %d", groupBind->save->GetPlayerCount(), groupBind->save->GetGroupCount());
-                            else
-                                sLog.outError("GroupBind save NULL");
-                            player->RepopAtGraveyard();
-                            return false;
-                        }
-                        // if the group/leader is permanently bound to the instance
-                        // players also become permanently bound when they enter
-                        if (groupBind->perm)
-                        {
-                            WorldPacket data(SMSG_INSTANCE_SAVE_CREATED, 4);
-                            data << uint32(0);
-                            player->GetSession()->SendPacket(&data);
-                            player->BindToInstance(GetInstanceSave(), true);
-                        }
-                    }
-                }
+                // set up a solo bind or continue using it
+                if(!playerBind)
+                    player->BindToInstance(GetInstanceSave(), false);
                 else
-                {
-                    // set up a solo bind or continue using it
-                    if(!playerBind)
-                        player->BindToInstance(GetInstanceSave(), false);
-                    else if (playerBind->save != GetInstanceSave())
-                    {
-                        // cannot jump to a different instance without resetting it
-                        player->RepopAtGraveyard();
-                        return false;
-                    }
-                }
+                    // cannot jump to a different instance without resetting it
+                    MANGOS_ASSERT(playerBind->save == GetInstanceSave());
+
             }
         }
-
-        // for normal instances cancel the reset schedule when the
-        // first player enters (no players yet)
-        SetResetSchedule(false);
-
-        DETAIL_LOG("MAP: Player '%s' is entering instance '%u' of map '%s'", player->GetName(), GetInstanceId(), GetMapName());
-        // initialize unload state
-        m_unloadTimer = 0;
-        m_resetAfterUnload = false;
-        m_unloadWhenEmpty = false;
     }
+
+    // for normal instances cancel the reset schedule when the
+    // first player enters (no players yet)
+    SetResetSchedule(false);
+
+    DETAIL_LOG("MAP: Player '%s' is entering instance '%u' of map '%s'", player->GetName(), GetInstanceId(), GetMapName());
+    // initialize unload state
+    m_unloadTimer = 0;
+    m_resetAfterUnload = false;
+    m_unloadWhenEmpty = false;
 
     // this will acquire the same mutex so it cannot be in the previous block
     Map::Add(player);
@@ -1487,7 +1485,7 @@ void InstanceMap::CreateInstanceData(bool load)
             const char* data = fields[0].GetString();
             if(data)
             {
-                DEBUG_LOG("Loading instance data for `%s` with id %u", sObjectMgr.GetScriptName(i_script_id), i_InstanceId);
+                DEBUG_LOG("Loading instance data for `%s` with id %u", sScriptMgr.GetScriptName(i_script_id), i_InstanceId);
                 i_data->Load(data);
             }
             delete result;
@@ -1495,7 +1493,7 @@ void InstanceMap::CreateInstanceData(bool load)
     }
     else
     {
-        DEBUG_LOG("New instance data, \"%s\" ,initialized!", sObjectMgr.GetScriptName(i_script_id));
+        DEBUG_LOG("New instance data, \"%s\" ,initialized!", sScriptMgr.GetScriptName(i_script_id));
         i_data->Initialize();
     }
 }
@@ -1639,13 +1637,12 @@ bool BattleGroundMap::CanEnter(Player * player)
 
 bool BattleGroundMap::Add(Player * player)
 {
-    {
-        Guard guard(*this);
-        if(!CanEnter(player))
-            return false;
-        // reset instance validity, battleground maps do not homebind
-        player->m_InstanceValid = true;
-    }
+    if(!CanEnter(player))
+        return false;
+
+    // reset instance validity, battleground maps do not homebind
+    player->m_InstanceValid = true;
+
     return Map::Add(player);
 }
 
@@ -1882,7 +1879,7 @@ void Map::ScriptsProcess()
                 if (step.script->talk.flags & 0x02)
                     target = source;
 
-                ObjectGuid unitTargetGuid = target ? target->GetObjectGuid() : ObjectGuid();
+                Unit* unitTarget = target && target->isType(TYPEMASK_UNIT) ? static_cast<Unit*>(target) : NULL;
                 int32 textId = step.script->talk.textId[0];
 
                 // May have text for random
@@ -1902,35 +1899,35 @@ void Map::ScriptsProcess()
                 switch(step.script->talk.chatType)
                 {
                     case CHAT_TYPE_SAY:
-                        pSource->MonsterSay(textId, step.script->talk.language, unitTargetGuid);
+                        pSource->MonsterSay(textId, step.script->talk.language, unitTarget);
                         break;
                     case CHAT_TYPE_YELL:
-                        pSource->MonsterYell(textId, step.script->talk.language, unitTargetGuid);
+                        pSource->MonsterYell(textId, step.script->talk.language, unitTarget);
                         break;
                     case CHAT_TYPE_TEXT_EMOTE:
-                        pSource->MonsterTextEmote(textId, unitTargetGuid);
+                        pSource->MonsterTextEmote(textId, unitTarget);
                         break;
                     case CHAT_TYPE_BOSS_EMOTE:
-                        pSource->MonsterTextEmote(textId, unitTargetGuid, true);
+                        pSource->MonsterTextEmote(textId, unitTarget, true);
                         break;
                     case CHAT_TYPE_WHISPER:
-                        if (!unitTargetGuid.IsPlayer())
+                        if (!unitTarget || unitTarget->GetTypeId() != TYPEID_PLAYER)
                         {
-                            sLog.outError("SCRIPT_COMMAND_TALK (script id %u) attempt to whisper (%u) to %s, skipping.", step.script->id, step.script->talk.chatType, unitTargetGuid.GetString().c_str());
+                            sLog.outError("SCRIPT_COMMAND_TALK (script id %u) attempt to whisper (%u) to %s, skipping.", step.script->id, step.script->talk.chatType, unitTarget ? unitTarget->GetGuidStr().c_str() : "<no target>");
                             break;
                         }
-                        pSource->MonsterWhisper(textId, unitTargetGuid);
+                        pSource->MonsterWhisper(textId, unitTarget);
                         break;
                     case CHAT_TYPE_BOSS_WHISPER:
-                        if (!unitTargetGuid.IsPlayer())
+                        if (!unitTarget || unitTarget->GetTypeId() != TYPEID_PLAYER)
                         {
-                            sLog.outError("SCRIPT_COMMAND_TALK (script id %u) attempt to whisper (%u) to %s, skipping.", step.script->id, step.script->talk.chatType, unitTargetGuid.GetString().c_str());
+                            sLog.outError("SCRIPT_COMMAND_TALK (script id %u) attempt to whisper (%u) to %s, skipping.", step.script->id, step.script->talk.chatType, unitTarget ? unitTarget->GetGuidStr().c_str() : "<no target>");
                             break;
                         }
-                        pSource->MonsterWhisper(textId, unitTargetGuid, true);
+                        pSource->MonsterWhisper(textId, unitTarget, true);
                         break;
                     case CHAT_TYPE_ZONE_YELL:
-                        pSource->MonsterYellToZone(textId, step.script->talk.language, unitTargetGuid);
+                        pSource->MonsterYellToZone(textId, step.script->talk.language, unitTarget);
                         break;
                     default:
                         break;                              // must be already checked at load
@@ -2834,11 +2831,86 @@ void Map::ScriptsProcess()
 
                 break;
             }
+            case SCRIPT_COMMAND_SEND_MAIL:
+            {
+                if (!target && !source)
+                {
+                    sLog.outError("SCRIPT_COMMAND_SEND_MAIL (script id %u) call for NULL object.", step.script->id);
+                    break;
+                }
+
+                // only Player
+                if ((!target || target->GetTypeId() != TYPEID_PLAYER) && (!source || source->GetTypeId() != TYPEID_PLAYER))
+                {
+                    sLog.outError("SCRIPT_COMMAND_SEND_MAIL (script id %u) call for non-player (TypeIdSource: %u)(TypeIdTarget: %u), skipping.", step.script->id, source ? source->GetTypeId() : 0, target ? target->GetTypeId() : 0);
+                    break;
+                }
+                
+                Player* pReceiver = target && target->GetTypeId() == TYPEID_PLAYER ? (Player*)target : (Player*)source;
+                if(!pReceiver)
+                    break;
+
+                if(MailTemplate const *mail_template = sObjectMgr.GetMailTemplate(step.script->sendMail.mail_id))
+                {
+                    MailDraft draft(mail_template->title, mail_template->text);
+
+                    if(ItemPrototype const* item1 = ObjectMgr::GetItemPrototype(mail_template->item1))
+                        if (Item* cItem1 = Item::CreateItem(mail_template->item1,mail_template->item1_c,pReceiver))
+                        {
+                            cItem1->SaveToDB();
+                            draft.AddItem(cItem1);
+                        }
+
+                    if(ItemPrototype const* item2 = ObjectMgr::GetItemPrototype(mail_template->item2))
+                        if (Item* cItem2 = Item::CreateItem(mail_template->item2,mail_template->item2_c,pReceiver))
+                        {
+                            cItem2->SaveToDB();
+                            draft.AddItem(cItem2);
+                        }
+
+                    if(ItemPrototype const* item3 = ObjectMgr::GetItemPrototype(mail_template->item3))
+                        if (Item* cItem3 = Item::CreateItem(mail_template->item3,mail_template->item3_c,pReceiver))
+                        {
+                            cItem3->SaveToDB();
+                            draft.AddItem(cItem3);
+                        }
+
+                    if(ItemPrototype const* item4 = ObjectMgr::GetItemPrototype(mail_template->item4))
+                        if (Item* cItem4 = Item::CreateItem(mail_template->item4,mail_template->item4_c,pReceiver))
+                        {
+                            cItem4->SaveToDB();
+                            draft.AddItem(cItem4);
+                        }
+
+                    if(ItemPrototype const* item5 = ObjectMgr::GetItemPrototype(mail_template->item5))
+                        if (Item* cItem5 = Item::CreateItem(mail_template->item5,mail_template->item5_c,pReceiver))
+                        {
+                            cItem5->SaveToDB();
+                            draft.AddItem(cItem5);
+                        }
+
+                    switch(step.script->sendMail.type)
+                    {
+                        case 3: // creature
+                            draft.SendMailTo(pReceiver, MailSender(MAIL_CREATURE, step.script->sendMail.guidOrEntry));
+                            break;
+                        case 4: // object
+                            draft.SendMailTo(pReceiver, MailSender(MAIL_GAMEOBJECT, step.script->sendMail.guidOrEntry));
+                            break;
+                        default:
+                            break;
+                    }
+                }else{
+                    sLog.outError("SCRIPT_COMMAND_SEND_MAIL (script id %u) can't find mail_template (mail_id: %u) ", step.script->id, step.script->sendMail.mail_id);
+                    break;
+                }
+
+                break;
+            }
             default:
                 sLog.outError("Unknown SCRIPT_COMMAND_ %u called for script id %u.",step.script->command, step.script->id);
                 break;
         }
-
         m_scriptSchedule.erase(iter);
         sWorld.DecreaseScheduledScriptCount();
 

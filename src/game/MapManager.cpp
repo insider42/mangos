@@ -23,11 +23,13 @@
 #include "Log.h"
 #include "Transports.h"
 #include "GridDefines.h"
+#include "InstanceData.h"
 #include "DestinationHolderImp.h"
 #include "World.h"
 #include "CellImpl.h"
 #include "Corpse.h"
 #include "ObjectMgr.h"
+#include "Config/Config.h"
 
 #define CLASS_LOCK MaNGOS::ClassLevelLockable<MapManager, ACE_Recursive_Thread_Mutex>
 INSTANTIATE_SINGLETON_2(MapManager, CLASS_LOCK);
@@ -53,6 +55,11 @@ MapManager::~MapManager()
 void
 MapManager::Initialize()
 {
+    int num_threads(sWorld.getConfig(CONFIG_UINT32_NUMTHREADS));
+    // Start mtmaps if needed.
+    if(num_threads > 0 && m_updater.activate(num_threads) == -1)
+        abort();
+
     InitStateMachine();
 }
 
@@ -220,14 +227,16 @@ bool MapManager::CanPlayerEnter(uint32 mapid, Player* player)
                 DEBUG_LOG("Map::CanEnter - player '%s' is dead but doesn't have a corpse!", player->GetName());
             }
         }
-
-        // TODO: move this to a map dependent location
-        /*if(i_data && i_data->IsEncounterInProgress())
+        if (!player->isGameMaster())
         {
-            DEBUG_LOG("MAP: Player '%s' can't enter instance '%s' while an encounter is in progress.", player->GetName(), GetMapName());
-            player->SendTransferAborted(GetId(), TRANSFER_ABORT_ZONE_IN_COMBAT);
-            return(false);
-        }*/
+            InstanceData* i_data = ((InstanceMap*)CreateMap(mapid, player))->GetInstanceData();
+
+            if (i_data && i_data->IsEncounterInProgress())
+            {
+                player->SendTransferAborted(mapid, TRANSFER_ABORT_ZONE_IN_COMBAT);
+                return false;
+            }
+        }
         return true;
     }
     else
@@ -260,7 +269,15 @@ MapManager::Update(uint32 diff)
         return;
 
     for(MapMapType::iterator iter=i_maps.begin(); iter != i_maps.end(); ++iter)
-        iter->second->Update((uint32)i_timer.GetCurrent());
+    {
+        if (m_updater.activated())
+            m_updater.schedule_update(*iter->second, i_timer.GetCurrent());
+        else
+            iter->second->Update(i_timer.GetCurrent());
+    }
+
+    if (m_updater.activated())
+        m_updater.wait();
 
     for (TransportSet::iterator iter = m_Transports.begin(); iter != m_Transports.end(); ++iter)
         (*iter)->Update((uint32)i_timer.GetCurrent());
@@ -317,6 +334,9 @@ void MapManager::UnloadAll()
     {
         delete i_maps.begin()->second;
         i_maps.erase(i_maps.begin());
+
+        if (m_updater.activated())
+            m_updater.deactivate();
     }
 
     TerrainManager::Instance().UnloadAll();
@@ -324,6 +344,8 @@ void MapManager::UnloadAll()
 
 uint32 MapManager::GetNumInstances()
 {
+    Guard guard(*this);
+
     uint32 ret = 0;
     for(MapMapType::iterator itr = i_maps.begin(); itr != i_maps.end(); ++itr)
     {
@@ -336,6 +358,8 @@ uint32 MapManager::GetNumInstances()
 
 uint32 MapManager::GetNumPlayersInInstances()
 {
+    Guard guard(*this);
+
     uint32 ret = 0;
     for(MapMapType::iterator itr = i_maps.begin(); itr != i_maps.end(); ++itr)
     {
